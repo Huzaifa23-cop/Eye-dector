@@ -1,105 +1,75 @@
-# EyeBridge Assist — blink-to-caregiver communication (ongoing research)
+# EyeBridge Assist — experimental eye-gesture communication
 
-> **Status: v0.1.0 proof of concept / ongoing open-source project — NOT clinically validated, NOT a medical device, NOT an emergency service.** No patients have been enrolled, no clinical trials or device testing have been performed. **Never use this as the sole way for someone to call for help.** Always provide a proven independent call button or reachable caregiver. 
+> **Ongoing open-source accessibility prototype (v0.1.0 alpha). Not a medical device or emergency service.** Never rely on it as someone's only way to request help. Maintain an independent reliable call method and reachable caregiver.
 
-An accessibility experiment: an Android device watches for **deliberate long eye closures** using an on-device camera model, converts sequences into simple requests, and sends an alert to a trusted local relay on a PC. Caregivers can view requests on the PC or a second phone in a web browser.
+EyeBridge Assist explores voluntary eye-closure gestures as a way to send simple messages for people with limited movement. **One Android APK is installed on two phones:** one in *patient* camera mode and the other in *caregiver* receiver mode. The two phones communicate directly over trusted local Wi-Fi, with no server or raw video transmission.
 
-### Why
+## System
 
-Some people with severe motor limitations may find eye-based communication helpful. Eye-blink recognition is prone to false positives and misses, especially under variable lighting, glasses, ptosis, eye fatigue, and camera movement. This project is a starting point for voluntary, accessible user research—not a promised assistive or medical solution.
+Patient Android phone: CameraX front camera → on-device Google ML Kit eye-open probabilities → guided eye-open / eye-closed calibration → deliberate closure duration → local UDP message.
 
-## What is implemented
+Caregiver Android phone: UDP listener → on-screen request and alert sound/vibration → network acknowledgment. **An ACK proves only that the caregiver app received the message—not that a person noticed or responded.** Both apps must stay active, with the caregiver screen visible.
 
-| Component | Working source | Installation |
-|---|---|---|
-| **Patient Android app** | CameraX + on-device MediaPipe Face Landmarker with `eyeBlinkLeft` / `eyeBlinkRight` blendshapes, long-closure timing, manual test buttons | Android Studio or GitHub Actions APK build (not yet hardware-tested) |
-| **Caregiver relay** | Python standard library HTTP server, 8-digit session code, allowlisted requests, bounded 120-event history | Python 3.10+ on a local PC |
-| **Caregiver dashboard** | Mobile-responsive HTML, alerts, timestamp history, test tone, optional vibration, ~1.2s polling | Browser on a PC or a second phone |
-| **Testing** | Four server integration tests for code verification, alerts, invalid actions and polling cursors | `python -m unittest discover -s tests -v` |
+## Gesture mapping (experimental, not validated)
 
-## Communication diagram
-
-```text
- PATIENT PHONE (Android app)       TRUSTED HOME Wi-Fi        PC (relay, Python)
- CameraX front camera                                       +------------------+
- MediaPipe Face Landmarker --> intentional long blinks --> | POST /api/alert  |
- BlinkSequence state engine      HTTP port 8768 / code      | event queue      |
-                                  (no raw video)           +--------+---------+
-                                                                    |
-                                                                    v
-                                                  CAREGIVER PHONE / PC BROWSER
-                                                   GET /api/events ~1.2 sec
-                                                   visible alert + test tone
-```
-
-## Blink gesture mapping in v0.1
-
-A **long blink** is a simultaneous-eye closure lasting approximately **0.45–1.7 seconds**. The next 5 seconds comprise a request window after the first long blink. The system counts valid blinks and then sends:
-
-| Intentional closures | Message |
+| Deliberate closure of both eyes, followed by reopening | Request |
 |---|---|
-| 1 long blink | **I feel cold** |
-| 2 long blinks | **I need assistance** |
-| 3 long blinks | **Urgent assistance requested** (not emergency dispatch) |
+| 0.9–1.9 seconds | I feel cold |
+| 2.1–3.7 seconds | I need assistance |
+| 4–7 seconds, then repeat the same hold within 12 seconds | Urgent assistance requested (two-step confirmation) |
 
-There is a 9-second cooldown after recognizing a request. Closing eyes for longer than 1.7 seconds resets the sequence. Losing face tracking clears the sequence. Model threshold is currently a fixed 0.58 confidence value—**personal calibration is still TODO**, and people who cannot reliably perform deliberate closures may not be able to use this version. This mapping MUST be validated for each person's abilities before any supervised test.
+Short natural blinks and lost face tracking should not create commands. Individuals may not be able to perform these gestures. Calibration, timing, face/eye probability detection and delivery reliability require careful supervised testing.
 
-## Start the relay on a PC
+## Implemented source
 
-Install Python 3.10 or later, then run from the repository root:
+- Android patient/caregiver screens in a single app; guided 3-second OPEN and 3-second CLOSED calibration.
+- On-device ML Kit Face Detection; face visibility checks; opt-in labeled probability CSV export (not face videos).
+- Deterministic Java gesture parser and tests; emergency request requires a second deliberate hold.
+- Direct private-LAN UDP port **9876**, six-digit code, short retries, duplicate filtering, and app-level receipt ACK.
+- Caregiver visible alerts plus audio/vibration while the caregiver mode is on screen.
+- GitHub Actions workflow for JDK 17, Android SDK 35, Java tests and debug APK compilation.
 
-```bash
-python relay/server.py
-```
+## Verified build
 
-The console shows an IP address and random **8-digit access code**. Keep the PC powered on, connect both phones to the **same trusted private Wi-Fi**, and allow incoming TCP port `8768` on the PC firewall for **Private networks** only. Never forward this port on your router.
+**2026-11-10:** GitHub Actions Android test and debug APK build **passed**, and the APK artifact was uploaded. This verifies compilation and tests only, **not** camera accuracy, network reliability, usability or clinical safety.
 
-Open `http://PC-IP:8768/` on the caregiver's phone. Enter the 8-digit code, click **Connect**, then click **Enable sound / Test alarm**. The browser must remain open: mobile browsers can suspend polling/audio in the background, even when connected. **Do not treat a background browser as guaranteed to receive alerts.**
+**[Download the debug APK from the successful build](https://github.com/Huzaifa23-cop/Eye-dector/actions/runs/42758656503)** → scroll to *Artifacts* → download **EyeBridge-Assist-Android-Debug-APK** → extract **app-debug.apk**. Install on two Android phones if you trust this experimental source/build. This is not a production-signed app.
 
-## Android app installation
+Alternatively open the **android/** folder in Android Studio (JDK 17) and build locally.
 
-A native **Android app** is provided in `android/`. The repository includes `.github/workflows/android-apk.yml` to compile a **debug APK** on GitHub's Ubuntu Actions runner.
+## Safe supervised test walkthrough
 
-1. Create a **new public GitHub repository** (suggested name: `EyeBridge-Assist`) and upload this entire source tree, including `.github`.
-2. In GitHub open **Actions → Build EyeBridge Android APK → Run workflow**. If Android build succeeds, download the `EyeBridge-Assist-Android-APK` artifact, extract `app-debug.apk`, and sideload it onto your Android phone.
-3. On the phone grant **Camera**, enter the PC's LAN IP and the code printed in the PC terminal, tap **CONNECT & START MONITORING**.
-4. First test the **TEST COLD/HELP/URGENT** buttons while the caregiver is watching the dashboard. Then try face monitoring under controlled conditions.
+1. Connect two Android phones to the same **trusted private Wi-Fi**; keep both screens on and apps visible. Disable battery saver for the supervised demo.
+2. On the caregiver phone, select **Caregiver receiver**, copy its local Wi-Fi IPv4 and six-digit code, and tap **START LISTENING**.
+3. On the patient phone, select **Patient camera** and allow camera permission. Calibrate OPEN and CLOSED eye states separately, for 3 seconds each.
+4. Enter the caregiver phone IPv4 and code. Tap **TEST connection**, then **TEST caregiver notification** while someone is watching the caregiver phone.
+5. In a supervised experiment only, try deliberate closures and compare the intended message with what appears on the caregiver phone.
+6. If a request isn't confirmed, use another reliable communication method. **Do not treat this prototype as suitable for unattended care or an emergency.**
 
-The build downloads Google's published Face Landmarker model as a Gradle prebuild dependency; its `.task` bundle is included in the generated APK. The model and SDK are third-party dependencies with their own licenses/terms.
+## Limitations and privacy
 
-### Known restrictions
+- **No independent validation:** false positives, missed requests, poor lighting, glasses, fatigue, occlusion, involuntary closures and device movement can cause errors.
+- The six-digit code is **not strong authentication**, and UDP traffic is **unencrypted**; use only a trusted LAN. Never expose UDP 9876 to the Internet.
+- The app has no remote/cloud routing, background notifications, escalation, human acknowledgment, independent fault monitoring or guaranteed power/network availability.
+- The camera image stays on the patient phone. No images or face video are transmitted; labeled eye-open probability samples can be exported only by user action. Never publish identifiable participant material.
+- Participation in any usability research requires informed consent and appropriate safeguarding.
 
-- No ready-made APK has been verified yet. The workflow is source code, not a guarantee of a passing build or device functionality. 
-- Audio is played by the caregiver web page only while it is open/unlocked. Silent mode, background restrictions and browser autoplay can prevent sound.
-- The camera must point steadily at the patient's eyes, with suitable lighting. No adaptive threshold/calibration wizard yet.
-- **Not encrypted:** HTTP messages and access codes travel over the local LAN. Use only a trusted private network, not public Wi-Fi; avoid putting it on the Internet. The session code is not strong authentication. No cloud or video upload is included.
-- The relay must keep running on a PC, so it is not currently an independent phone-to-phone application. A fully native caregiver Android app and authenticated secure transport are future milestones.
-- A network acknowledgement means the relay received an event, **not** that the caregiver saw, heard or acknowledged it. The patient app does not currently show caregiver confirmation.
-- This is not appropriate for unsupervised clinical/patient use or medical emergency reliance.
+See [protocol](docs/LAN_PROTOCOL.md), [research and safety notes](docs/RESEARCH_AND_SAFETY.md), and [ongoing project status](PROJECT_STATUS.md).
 
-## Roadmap (ongoing — not yet done)
+## Roadmap — ongoing
 
-- [x] Open-source project scaffolding and documentation
-- [x] Android camera and model integration source
-- [x] Long-blink intent parser source with disabled-on-face-loss behavior
-- [x] Local caregiver web dashboard + relay
-- [x] Relay integration tests
-- [ ] Verify Android APK build and real-device camera recognition
-- [ ] Perform consenting user-centered needs assessment and supervised usability studies, including disability-community feedback
-- [ ] Per-user calibration with explicit sensitivity profiles and a guided training mode
-- [ ] Reduce accidental activation with a confirmation flow and caregiver acknowledgement
-- [ ] Dedicated Android caregiver app with reliable notifications and secure authenticated transport
-- [ ] Independent safety and accessibility evaluation, error/latency measurements, privacy/threat model
-- [ ] Multiple languages, configurable custom request cards, large-type and audio prompts
+- [x] First open-source Android source, UI, calibration and gesture parser
+- [x] Local caregiver alert protocol and Java unit tests
+- [x] Successful debug APK build on GitHub Actions (2026-11-10)
+- [ ] Two-device supervised end-to-end test on real phones
+- [ ] Gesture error and delivery-latency measurements, including failure cases
+- [ ] Personalized accessible gesture calibration with community participation
+- [ ] Human caregiver acknowledgment and reliable independent fallback design
+- [ ] Authenticated encrypted transport and robust lifecycle handling
+- [ ] Accessibility audits, translated interface, privacy and ethics review
 
-## Contributing
+## Contributing and Claude for Open Source
 
-Issues and PRs welcome for low-vision/low-mobility UX, calibration, robust network transport, accessibility testing, tests, documentation and translated interface strings. See [CONTRIBUTING.md](CONTRIBUTING.md). Do not publish patient videos or health data; never make clinical claims based on this prototype.
+This is an **early prototype, not an established project with proven usage**. Contributions from people with lived disability experience, caregivers, accessibility practitioners, and Android engineers are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and [the draft project notes for Claude OSS](docs/CLAUDE_FOR_OSS_NOTES.md). Do not claim clinical success, fabricated adoption, or guaranteed Claude program acceptance.
 
-## Claude for Open Source — transparent project description
-
-EyeBridge Assist is a **new, ongoing open-source accessibility prototype** that explores camera-based intentional eye-gesture communication for individuals with limited movement. As of this initial release, the project has no demonstrated adoption, independent contributors, clinical testing or verified patient outcomes. If accepted into the Claude for OSS program, we'd use developer assistance for tests, Android app review, privacy/threat modeling, documentation, accessibility improvements and careful community contributions. **Anthropic approval cannot be promised by creating a new repository.**
-
-## Attribution
-
-Project code: MIT license in `LICENSE`. Uses Google [MediaPipe Face Landmarker](https://developers.google.com/edge/mediapipe/solutions/vision/face_landmarker) and [Android CameraX](https://developer.android.com/media/camera/camerax). This project does not include patient photos, medical datasets or scraped clinical content.
+**License:** [MIT](LICENSE). ML Kit and Android CameraX are third-party dependencies with separate licenses/terms. There are no patient photos or medical records in this source repository.
