@@ -2,7 +2,7 @@
 
 **Project:** EyeBridge Assist
 **Phase:** Ongoing, experimental Android accessibility research prototype
-**Project site:** GitHub repository to be created by maintainer
+**Project site:** GitHub https://github.com/Huzaifa23-cop/Eye-dector
 **License:** MIT
 **Maturity:** First source release; not medically validated or proven with real device pairs
 **Reach and impact:** No verified download counts, dependents, external contributors, or users yet. Do not fabricate adoption statistics.
@@ -17,7 +17,7 @@ EyeBridge Assist explores low-cost, camera-based communication for individuals w
 - Local on-device ML Kit eye-open probability, open/closed calibration prompts and opt-in labeled probability export.
 - Experimental eye-closure gesture parser with two-step urgent confirmation.
 - Wi-Fi UDP prototype with app-level acknowledgments and duplicate filtering.
-- Local gesture and transport checks; repository CI workflow prepared but the new repository's APK build is **not yet verified**.
+- Local gesture and transport checks; GitHub Actions Java unit tests and debug APK build **passed on 2026-11-10**; physical two-phone testing has **not** been verified.
 
 ## What is NOT done / not claimed
 
